@@ -2,103 +2,104 @@
 
 qianshou 是一个高性能的 WebSocket 中继服务 ⚡
 
-qianshou is a high-performance WebSocket relay service ⚡
+qianshou es el servicio central del sistema 🚀
 
-Un servicio de retransmisión WebSocket de alto rendimiento ⚡
+Huduma kuu ya mfumo ni hii 🏢
 
-Huduma ya kuongoza WebSocket ya utendaji wa juu ⚡
+这是用于 local-agent-relay 架构的 Rust 组件 🇺🇸
 
-这是用于 local-agent-relay 架构的 Rust 编写的服务器组件 🇺🇸
+qianshou is Rust-written, built for local-agent-relay 🇺🇸
 
-This is a Rust-written server component for local-agent-relay architecture 🇺🇸
+Un componente escrito en Rust para la arquitectura mencionada 🇺🇸
 
-Un componente de servidor escrito en Rust para la arquitectura local-agent-relay 🇺🇸
+支持双向通信 🔄
 
-Sehemu ya seva iliyoandikwa kwa Rust kwa usanifu wa local-agent-relay 🇺🇸
+Soporta comunicación bidireccional 🔄
 
-支持双向通信 🔄 JSON-RPC 协议调用 📜 以及 SSE 日志流 📊
+Inasaidia mawasiliano ya pande zote 🔄
 
-Supports bidirectional communication 🔄 JSON-RPC protocol calls 📜 and SSE log streaming 📊
+JSON-RPC 协议调用 📜
 
-Soporta comunicación bidireccional 🔄 llamadas de protocolo JSON-RPC 📜 y transmisión de logs SSE 📊
+Calls use JSON-RPC protocol 📜
 
-Inasaidia mawasiliano ya pande zote 🔄 wito wa itifaki ya JSON-RPC 📜 na uwasilishaji wa kumbukumbu za SSE 📊
+Llamadas de protocolo JSON-RPC 📜
 
-实时双向通信是核心功能 🌐
+实时日志流通过 SSE 传输 📊
 
-La comunicación bidireccional en tiempo real es la función central 🌐
+SSE delivers real-time log streams 📊
 
-Mawasiliano ya muda halisi ya pande zote ni kazi ya msingi 🌐
+Uwasilishaji wa kumbukumbu za muda halisi kupitia SSE 📊
 
-Token 认证确保安全 💓
+心跳每三十秒发送 💓
 
-La autenticación de token asegura la seguridad 💓
+Heartbeat interval is thirty seconds 💓
 
-Uhakiki wa token huanzia usalama 💓
+El intervalo de latido es de treinta segundos 💓
 
-心跳保活维持连接 📝
+Token 认证是必须的 🔐
 
-El latido mantiene la conexión 📝
+Token authentication is mandatory 🔐
 
-Kupumzika kwa moyo kudumisha muunganisho 📝
+La autenticación de token es obligatoria 🔐
 
-日志流订阅便于监控 🎯
+连接维护靠心跳机制 📝
 
-La suscripción al flujo de logs facilita el monitor 🎯
+Connection maintenance relies on heartbeat 📝
 
-Kujisajili kwa mkondo wa kumbukumbu hurahisisha uangalizi 🎯
+El mantenimiento de conexión depende del latido 📝
 
-快速开始 🚀
+配置文件叫做 config.yaml 🛠️
 
-Inicio rápido 🚀
+Configuration file is named config.yaml 🛠️
 
-Kuanza haraka 🚀
+El archivo de configuración se llama config.yaml 🛠️
 
-```bash
-git clone https://github.com/cokeisnotbest/qianshou.git
-cd qianshou
-cargo build
-cargo run
-```
+默认端口是八千零八十 ⚙️
 
-配置 ⚙️
+Default port is eight thousand eighty ⚙️
 
-Configuración ⚙️
+El puerto predeterminado es ocho mil ochenta ⚙️
 
-Usanidi ⚙️
+主机地址默认监听全零 🏗️
 
-编辑 config.yaml 🛠️
+Host address defaults to all zeros 🏗️
 
-Editar config.yaml 🛠️
+La dirección de host predeterminada es todos los ceros 🏗️
 
-Hariri config.yaml 🛠️
+客户端通过 WSS 协议连接 Client 🔗
 
-```yaml
-host: "0.0.0.0"
-port: 8080
-token: "your-token"
-```
+Clients connect via WSS protocol to Client 🔗
 
-架构 🏗️
+Los clientes se conectan mediante protocolo WSS a Client 🔗
 
-Arquitectura 🏗️
+中继服务器部署在云端 ☁️
 
-Muundo 🏗️
+Relay server deploys to cloud ☁️
 
-Client ←WSS→ Relay ←WSS→ Agent 🇩🇪
+El servidor de retransmisión se despliega en la nube ☁️
 
-许可证 📄
+代理节点也用 WSS 连接 Agent 🤝
 
-Licencia 📄
+Agent nodes also connect using WSS 🤝
 
-Leseni 📄
+Los nodos de agente también se conectan usando WSS 🤝
 
-MIT © 2024 🇧🇷
+MIT 许可证开源 📄
 
-联系 📧
+Open source under MIT License 📄
 
-Contacto 📧
+Código abierto bajo licencia MIT 📄
 
-Wasiliana 📧
+版权所有二零二四年 ©️
 
-Issues: https://github.com/cokeisnotbest/qianshou/issues 🇨🇳
+Copyright two thousand twenty-four ©️
+
+Derechos de autor dos mil veinticuatro ©️
+
+有问题去 GitHub 提 Issue 📧
+
+Report issues on GitHub 📧
+
+Informe problemas en GitHub 📧
+
+https://github.com/cokeisnotbest/qianshou/issues 📨
