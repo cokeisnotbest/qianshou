@@ -8,6 +8,7 @@
 //! - Heartbeat keep-alive (30 seconds)
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use axum::{
     Router,
     routing::get,
@@ -30,6 +31,31 @@ pub struct Config {
     pub token: String,
 }
 
+impl Config {
+    /// Load configuration from a YAML file
+    pub fn from_yaml(path: &PathBuf) -> Result<Self, ConfigError> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| ConfigError::FileRead(e.to_string()))?;
+        
+        let config: Config = serde_yaml::from_str(&content)
+            .map_err(|e| ConfigError::YamlParse(e.to_string()))?;
+        
+        config.validate()?;
+        Ok(config)
+    }
+    
+    /// Validate configuration
+    fn validate(&self) -> Result<(), ConfigError> {
+        if self.token.is_empty() {
+            return Err(ConfigError::InvalidToken("token cannot be empty".to_string()));
+        }
+        if self.port == 0 {
+            return Err(ConfigError::InvalidPort("port cannot be 0".to_string()));
+        }
+        Ok(())
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -39,6 +65,28 @@ impl Default for Config {
         }
     }
 }
+
+/// Configuration errors
+#[derive(Debug)]
+pub enum ConfigError {
+    FileRead(String),
+    YamlParse(String),
+    InvalidToken(String),
+    InvalidPort(String),
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::FileRead(msg) => write!(f, "Failed to read config file: {}", msg),
+            ConfigError::YamlParse(msg) => write!(f, "Failed to parse YAML: {}", msg),
+            ConfigError::InvalidToken(msg) => write!(f, "Invalid token: {}", msg),
+            ConfigError::InvalidPort(msg) => write!(f, "Invalid port: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
 
 /// Broadcast channel for SSE log streaming
 #[derive(Clone)]
@@ -122,8 +170,27 @@ async fn main() {
 
     tracing::info!("Starting qianshou relay server...");
 
-    // Load configuration (using defaults for now)
-    let config = Config::default();
+    // Parse CLI arguments for config file path
+    let config_path = parse_config_path();
+    
+    // Load configuration from YAML file
+    let config = match Config::from_yaml(&config_path) {
+        Ok(cfg) => {
+            tracing::info!("Loaded configuration from: {}", config_path.display());
+            cfg
+        }
+        Err(e) => {
+            tracing::error!("Failed to load config: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Print loaded config info (without exposing token)
+    tracing::info!("Server configuration:");
+    tracing::info!("  Host: {}", config.host);
+    tracing::info!("  Port: {}", config.port);
+    tracing::info!("  Token: [REDACTED]");
+
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()
         .unwrap_or_else(|_| "0.0.0.0:8080".parse().unwrap());
@@ -144,9 +211,28 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+/// Parse command line arguments for config file path
+fn parse_config_path() -> PathBuf {
+    let args: Vec<String> = std::env::args().collect();
+    
+    // Look for --config or -c argument
+    for i in 0..args.len() {
+        if args[i] == "--config" || args[i] == "-c" {
+            if i + 1 < args.len() {
+                return PathBuf::from(&args[i + 1]);
+            }
+        }
+    }
+    
+    // Default to ./config.yaml
+    PathBuf::from("./config.yaml")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_config_default() {
@@ -160,5 +246,96 @@ mod tests {
         let config = Config::default();
         let state = AppState::new(config.clone());
         let _ = state.clone();
+    }
+
+    #[test]
+    fn test_config_validate_empty_token() {
+        let config = Config {
+            host: "0.0.0.0".to_string(),
+            port: 8080,
+            token: "".to_string(),
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validate_zero_port() {
+        let config = Config {
+            host: "0.0.0.0".to_string(),
+            port: 0,
+            token: "valid-token".to_string(),
+        };
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn test_config_validate_valid() {
+        let config = Config {
+            host: "0.0.0.0".to_string(),
+            port: 8080,
+            token: "valid-token".to_string(),
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_config_from_yaml_valid() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "host: \"127.0.0.1\"\nport: 9000\ntoken: \"test-token-123\"").unwrap();
+        
+        let path = PathBuf::from(file.path());
+        let config = Config::from_yaml(&path).unwrap();
+        
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 9000);
+        assert_eq!(config.token, "test-token-123");
+    }
+
+    #[test]
+    fn test_config_from_yaml_missing_file() {
+        let path = PathBuf::from("/nonexistent/path/config.yaml");
+        let result = Config::from_yaml(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_from_yaml_empty_token() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "host: \"0.0.0.0\"\nport: 8080\ntoken: \"\"").unwrap();
+        
+        let path = PathBuf::from(file.path());
+        let result = Config::from_yaml(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_config_from_yaml_invalid_yaml() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "host: \"0.0.0.0\"\n  invalid: yaml: content:").unwrap();
+        
+        let path = PathBuf::from(file.path());
+        let result = Config::from_yaml(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_config_path_default() {
+        // Parse config path - we test the flag parsing by checking default behavior
+        let _ = parse_config_path();
+    }
+
+    #[test]
+    fn test_config_error_display() {
+        let err = ConfigError::FileRead("test error".to_string());
+        assert!(err.to_string().contains("Failed to read config file"));
+        
+        let err = ConfigError::YamlParse("test error".to_string());
+        assert!(err.to_string().contains("Failed to parse YAML"));
+        
+        let err = ConfigError::InvalidToken("test error".to_string());
+        assert!(err.to_string().contains("Invalid token"));
+        
+        let err = ConfigError::InvalidPort("test error".to_string());
+        assert!(err.to_string().contains("Invalid port"));
     }
 }
