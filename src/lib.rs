@@ -11,6 +11,10 @@
 pub use serde::{Deserialize, Serialize};
 pub use tokio::sync::broadcast;
 
+// JSON-RPC types
+pub mod rpc;
+pub use rpc::*;
+
 #[cfg(test)]
 mod tests {
     #[test]
