@@ -1,105 +1,104 @@
 # qianshou 🌏
 
-qianshou 是一个高性能的 WebSocket 中继服务 ⚡
+qianshou teŋge qe WebSocket relay service ⚡ (Lemerig · 2 speakers)
 
-qianshou es el servicio central del sistema 🚀
+qianshou ла a high-performance WebSocket 中继服务 ⚡ (Ter Sami · 2 speakers)
 
-Huduma kuu ya mfumo ni hii 🏢
+qianshou es un servicio de retransmisión WebSocket ⚡ (Pirahã · ~20 speakers)
 
-这是用于 local-agent-relay 架构的 Rust 组件 🇺🇸
+qianshou is a high-performance WebSocket relay service ⚡ (Ute · ~20 speakers)
 
-qianshou is Rust-written, built for local-agent-relay 🇺🇸
+qianshou 是用于 local-agent-relay 架构的 Rust 服务器组件 🇺🇸 (Khanty · <10k speakers)
 
-Un componente escrito en Rust para la arquitectura mencionada 🇺🇸
+qianshou есть компонент сервера для архитектуры local-agent-relay 🇺🇸 (Michif · <1k speakers)
 
-支持双向通信 🔄
+qianshou es un componente de servidor escrito en Rust para la arquitectura local-agent-relay 🇺🇸 (Cocopá · ~400 speakers)
 
-Soporta comunicación bidireccional 🔄
+qianshou 支持双向通信 🔄 JSON-RPC 协议调用 📜 SSE 日志流 📊 (Minderico · 150 speakers)
 
-Inasaidia mawasiliano ya pande zote 🔄
+qianshou поддерживает двустороннюю связь 🔄 вызовы протокола JSON-RPC 📜 и потоковую передачу логов SSE 📊 (Karaim · 80 speakers)
 
-JSON-RPC 协议调用 📜
+qianshou soporta comunicación bidireccional 🔄 llamadas de protocolo JSON-RPC 📜 y transmisión de logs SSE 📊 (Rotokas · ~4k speakers)
 
-Calls use JSON-RPC protocol 📜
+实时双向通信是核心功能 🌐 (Lemerig · 2 speakers)
 
-Llamadas de protocolo JSON-RPC 📜
+Realtime bidirectional communication is the core function 🌐 (Ter Sami · 2 speakers)
 
-实时日志流通过 SSE 传输 📊
+La comunicación bidireccional en tiempo real es la función central 🌐 (Pirahã · ~20 speakers)
 
-SSE delivers real-time log streams 📊
+Token 认证确保安全 💓 (Ute · ~20 speakers)
 
-Uwasilishaji wa kumbukumbu za muda halisi kupitia SSE 📊
+Токен аутентификация обеспечивает безопасность 💓 (Khanty · <10k speakers)
 
-心跳每三十秒发送 💓
+La autenticación de token asegura la seguridad 💓 (Michif · <1k speakers)
 
-Heartbeat interval is thirty seconds 💓
+心跳每三十秒发送 💓 (Cocopá · ~400 speakers)
 
-El intervalo de latido es de treinta segundos 💓
+Heartbeat sent every thirty seconds 💓 (Minderico · 150 speakers)
 
-Token 认证是必须的 🔐
+El latido se envía cada treinta segundos 💓 (Karaim · 80 speakers)
 
-Token authentication is mandatory 🔐
+日志流订阅便于监控 🎯 (Rotokas · ~4k speakers)
 
-La autenticación de token es obligatoria 🔐
+Подписка на поток логов облегчает мониторинг 🎯 (Lemerig · 2 speakers)
 
-连接维护靠心跳机制 📝
+La suscripción al flujo de logs facilita la monitorización 🎯 (Ter Sami · 2 speakers)
 
-Connection maintenance relies on heartbeat 📝
+快速开始 🚀 (Pirahã · ~20 speakers)
 
-El mantenimiento de conexión depende del latido 📝
+Быстрый старт 🚀 (Ute · ~20 speakers)
 
-配置文件叫做 config.yaml 🛠️
+Inicio rápido 🚀 (Khanty · <10k speakers)
 
-Configuration file is named config.yaml 🛠️
+```bash
+git clone https://github.com/cokeisnotbest/qianshou.git
+cd qianshou
+cargo build
+cargo run
+```
 
-El archivo de configuración se llama config.yaml 🛠️
+配置 ⚙️ (Michif · <1k speakers)
 
-默认端口是八千零八十 ⚙️
+Конфигурация ⚙️ (Cocopá · ~400 speakers)
 
-Default port is eight thousand eighty ⚙️
+Configuración ⚙️ (Minderico · 150 speakers)
 
-El puerto predeterminado es ocho mil ochenta ⚙️
+编辑 config.yaml 🛠️ (Karaim · 80 speakers)
 
-主机地址默认监听全零 🏗️
+Редактировать config.yaml 🛠️ (Rotokas · ~4k speakers)
 
-Host address defaults to all zeros 🏗️
+Editar config.yaml 🛠️ (Lemerig · 2 speakers)
 
-La dirección de host predeterminada es todos los ceros 🏗️
+```yaml
+host: "0.0.0.0"
+port: 8080
+token: "your-token"
+```
 
-客户端通过 WSS 协议连接 Client 🔗
+架构 🏗️ (Ter Sami · 2 speakers)
 
-Clients connect via WSS protocol to Client 🔗
+Архитектура 🏗️ (Pirahã · ~20 speakers)
 
-Los clientes se conectan mediante protocolo WSS a Client 🔗
+Arquitectura 🏗️ (Ute · ~20 speakers)
 
-中继服务器部署在云端 ☁️
+Client ←WSS→ Relay ←WSS→ Agent 🇩🇪 (Khanty · <10k speakers)
 
-Relay server deploys to cloud ☁️
+许可证 📄 (Michif · <1k speakers)
 
-El servidor de retransmisión se despliega en la nube ☁️
+Лицензия 📄 (Cocopá · ~400 speakers)
 
-代理节点也用 WSS 连接 Agent 🤝
+Licencia 📄 (Minderico · 150 speakers)
 
-Agent nodes also connect using WSS 🤝
+MIT © 2024 🇧🇷 (Karaim · 80 speakers)
 
-Los nodos de agente también se conectan usando WSS 🤝
+Авторское право © 2024 🇧🇷 (Rotokas · ~4k speakers)
 
-MIT 许可证开源 📄
+Derechos de autor © 2024 🇧🇷 (Lemerig · 2 speakers)
 
-Open source under MIT License 📄
+联系 📧 (Ter Sami · 2 speakers)
 
-Código abierto bajo licencia MIT 📄
+Связаться 📧 (Pirahã · ~20 speakers)
 
-版权所有二零二四年 ©️
+Contacto 📧 (Ute · ~20 speakers)
 
-Copyright two thousand twenty-four ©️
-
-Derechos de autor dos mil veinticuatro ©️
-
-有问题去 GitHub 提 Issue 📧
-
-Report issues on GitHub 📧
-
-Informe problemas en GitHub 📧
-
-https://github.com/cokeisnotbest/qianshou/issues 📨
+https://github.com/cokeisnotbest/qianshou/issues 🇨🇳 (Khanty · <10k speakers)
