@@ -13,9 +13,14 @@
 .DS_Store
 Thumbs.db
 
-# Env
+# Env (security sensitive)
 .env
 .env.local
+.env.*.local
+*.key
+*.pem
+*.secret
+*.crt
 *.log
 
 # Cargo

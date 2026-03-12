@@ -1,0 +1,56 @@
+[package]
+name = "qianshou"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance WebSocket relay service"
+license = "MIT"
+authors = ["qianshou team"]
+
+[dependencies]
+# WebSocket
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+async-stream = "0.3"
+
+# HTTP/SSE
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+hyper = "1"
+
+# JSON-RPC
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Config
+serde_yaml = "0.9"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# JWT Authentication
+jsonwebtoken = "9"
+
+# HTTP utilities
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Utils
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+parking_lot = "0.12"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[[bin]]
+name = "qianshou"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
