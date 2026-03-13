@@ -25,6 +25,10 @@ pub use connection::{
     Connection, ConnectionId, ConnectionRegistry, ConnectionState, ConnectionType, RelayState, validate_token,
 };
 
+// Logging/SSE types
+pub mod logging;
+pub use logging::{LogBroadcaster, LogEntry, LogLevel, LogSubscriber, should_include_log};
+
 // JSON-RPC request handler
 pub mod handler;
 pub use handler::JsonRpcHandler;

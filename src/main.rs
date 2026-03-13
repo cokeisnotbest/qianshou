@@ -22,7 +22,7 @@ use futures_util::{stream::StreamExt, SinkExt};
 use tokio::sync::broadcast;
 use tokio::time::{interval, timeout, Duration, Instant};
 use serde::Deserialize;
-use qianshou::{TokenQuery as AuthTokenQuery, validate_token, Connection, RelayState};
+use qianshou::{TokenQuery as AuthTokenQuery, validate_token, Connection, RelayState, LogLevel, LogBroadcaster, should_include_log};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Heartbeat configuration constants
@@ -94,18 +94,20 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Application state with connection management
+/// Application state with connection management and logging
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
     pub relay_state: RelayState,
+    pub log_broadcaster: LogBroadcaster,
 }
 
 impl AppState {
     pub fn new(config: Config) -> Self {
+        let log_broadcaster = LogBroadcaster::new();
         let (log_tx, _) = broadcast::channel(1000);
         let relay_state = RelayState::new(log_tx);
-        Self { config, relay_state }
+        Self { config, relay_state, log_broadcaster }
     }
 }
 
@@ -136,6 +138,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     
     // Log connection open event
     tracing::info!("Connection opened: {}", connection_id);
+    state.log_broadcaster.log_connection_open(&connection_id.to_string());
     
     // Transition to connected state
     connection.connect();
@@ -245,6 +248,7 @@ async fn handle_disconnect(state: &AppState, connection_id: uuid::Uuid) {
     
     // Log connection close event
     tracing::info!("Connection closed: {}", connection_id);
+    state.log_broadcaster.log_connection_close(&connection_id.to_string());
     
     // Transition to disconnected state
     state.relay_state.connection_registry.update_state(&connection_id, qianshou::ConnectionState::Disconnected);
@@ -253,17 +257,40 @@ async fn handle_disconnect(state: &AppState, connection_id: uuid::Uuid) {
     // state.relay_state.connection_registry.remove(&connection_id);
 }
 
-/// SSE log stream endpoint
+/// Query parameters for SSE logs endpoint
+#[derive(Debug, Deserialize)]
+pub struct LogQuery {
+    /// Minimum log level to include (debug, info, warn, error)
+    #[serde(default)]
+    level: Option<String>,
+}
+
+impl LogQuery {
+    /// Get the minimum log level, defaulting to Debug (show all)
+    fn min_level(&self) -> LogLevel {
+        self.level
+            .as_ref()
+            .and_then(|l| l.parse().ok())
+            .unwrap_or(LogLevel::Debug)
+    }
+}
+
+/// SSE log stream endpoint with optional level filtering
 async fn sse_logs(
     Extension(state): Extension<AppState>,
+    Query(query): Query<LogQuery>,
 ) -> impl IntoResponse {
-    let mut rx = state.relay_state.log_tx.subscribe();
+    let min_level = query.min_level();
+    let mut rx = state.log_broadcaster.subscribe();
     
     let stream = async_stream::stream! {
         loop {
             match rx.recv().await {
-                Ok(log) => {
-                    yield Ok::<_, std::convert::Infallible>(Event::default().data(log));
+                Ok(log_entry) => {
+                    // Filter by log level
+                    if should_include_log(&log_entry.level, &min_level) {
+                        yield Ok::<_, std::convert::Infallible>(Event::default().data(log_entry.to_json()));
+                    }
                 }
                 Err(broadcast::error::RecvError::Closed) => break,
                 Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -472,5 +499,79 @@ mod tests {
         // Heartbeat interval should be greater than timeout
         // so we have time to detect missed pongs
         assert!(HEARTBEAT_INTERVAL_SECS > HEARTBEAT_TIMEOUT_SECS);
+    }
+    
+    // === Tests for SSE Log Streaming (US-008) ===
+    
+    #[test]
+    fn test_log_query_default_level() {
+        let query = LogQuery { level: None };
+        assert_eq!(query.min_level(), LogLevel::Debug);
+    }
+    
+    #[test]
+    fn test_log_query_info_level() {
+        let query = LogQuery { level: Some("info".to_string()) };
+        assert_eq!(query.min_level(), LogLevel::Info);
+    }
+    
+    #[test]
+    fn test_log_query_warn_level() {
+        let query = LogQuery { level: Some("warn".to_string()) };
+        assert_eq!(query.min_level(), LogLevel::Warn);
+    }
+    
+    #[test]
+    fn test_log_query_error_level() {
+        let query = LogQuery { level: Some("error".to_string()) };
+        assert_eq!(query.min_level(), LogLevel::Error);
+    }
+    
+    #[test]
+    fn test_log_query_invalid_level_defaults_to_debug() {
+        let query = LogQuery { level: Some("invalid".to_string()) };
+        assert_eq!(query.min_level(), LogLevel::Debug);
+    }
+    
+    #[test]
+    fn test_log_query_warning_alias() {
+        let query = LogQuery { level: Some("warning".to_string()) };
+        assert_eq!(query.min_level(), LogLevel::Warn);
+    }
+    
+    #[test]
+    fn test_app_state_has_log_broadcaster() {
+        let config = Config::default();
+        let state = AppState::new(config.clone());
+        // Verify log_broadcaster exists and can broadcast
+        let mut sub = state.log_broadcaster.subscribe();
+        state.log_broadcaster.info("test message");
+        let entry = sub.try_recv().unwrap();
+        assert_eq!(entry.message, "test message");
+    }
+    
+    #[test]
+    fn test_connection_events_broadcast() {
+        let config = Config::default();
+        let state = AppState::new(config.clone());
+        
+        let connection_id = "test-connection-123";
+        
+        // Create subscriber first
+        let mut sub = state.log_broadcaster.subscribe();
+        
+        // Broadcast connection open
+        state.log_broadcaster.log_connection_open(connection_id);
+        
+        // Broadcast connection close  
+        state.log_broadcaster.log_connection_close(connection_id);
+        
+        let open = sub.try_recv().unwrap();
+        assert_eq!(open.message, "Connection opened");
+        assert_eq!(open.connection_id, Some(connection_id.to_string()));
+        
+        let close = sub.try_recv().unwrap();
+        assert_eq!(close.message, "Connection closed");
+        assert_eq!(close.connection_id, Some(connection_id.to_string()));
     }
 }
