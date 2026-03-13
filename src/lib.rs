@@ -25,6 +25,10 @@ pub use connection::{
     Connection, ConnectionId, ConnectionRegistry, ConnectionState, RelayState, validate_token,
 };
 
+// JSON-RPC request handler
+pub mod handler;
+pub use handler::JsonRpcHandler;
+
 #[cfg(test)]
 mod tests {
     #[test]
