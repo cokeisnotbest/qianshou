@@ -14,6 +14,21 @@ use std::collections::HashMap;
 /// Unique connection identifier
 pub type ConnectionId = Uuid;
 
+/// Connection type - distinguishes between clients and agents
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConnectionType {
+    /// Client connection (initiates requests)
+    Client,
+    /// Agent connection (processes requests)
+    Agent,
+}
+
+impl Default for ConnectionType {
+    fn default() -> Self {
+        ConnectionType::Client
+    }
+}
+
 /// Connection state
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConnectionState {
@@ -37,6 +52,9 @@ impl Default for ConnectionState {
 #[derive(Debug, Clone)]
 pub struct Connection {
     pub id: ConnectionId,
+    pub connection_type: ConnectionType,
+    /// Optional agent/client identifier
+    pub remote_id: Option<String>,
     pub state: ConnectionState,
     pub created_at: chrono::DateTime<chrono::Utc>,
     pub last_activity: chrono::DateTime<Utc>,
@@ -48,10 +66,24 @@ impl Connection {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
+            connection_type: ConnectionType::Client, // Default to client
+            remote_id: None,
             state: ConnectionState::Connecting,
             created_at: now,
             last_activity: now,
         }
+    }
+
+    /// Create a new connection with specific type
+    pub fn with_type(connection_type: ConnectionType) -> Self {
+        let mut conn = Self::new();
+        conn.connection_type = connection_type;
+        conn
+    }
+
+    /// Set the remote ID (agent_id or client_id)
+    pub fn set_remote_id(&mut self, id: impl Into<String>) {
+        self.remote_id = Some(id.into());
     }
 
     /// Transition to connected state
@@ -153,6 +185,59 @@ impl ConnectionRegistry {
             .filter(|c| c.state == ConnectionState::Connected)
             .map(|c| c.id)
             .collect()
+    }
+
+    /// Get all active clients
+    pub fn active_clients(&self) -> Vec<Connection> {
+        let connections = self.connections.read();
+        connections
+            .values()
+            .filter(|c| c.state == ConnectionState::Connected && c.connection_type == ConnectionType::Client)
+            .cloned()
+            .collect()
+    }
+
+    /// Get all active agents
+    pub fn active_agents(&self) -> Vec<Connection> {
+        let connections = self.connections.read();
+        connections
+            .values()
+            .filter(|c| c.state == ConnectionState::Connected && c.connection_type == ConnectionType::Agent)
+            .cloned()
+            .collect()
+    }
+
+    /// Get connection by remote_id (agent_id or client_id)
+    pub fn get_by_remote_id(&self, remote_id: &str) -> Option<Connection> {
+        let connections = self.connections.read();
+        connections
+            .values()
+            .find(|c| c.remote_id.as_deref() == Some(remote_id))
+            .cloned()
+    }
+
+    /// Update connection type
+    pub fn update_connection_type(&self, id: &ConnectionId, connection_type: ConnectionType) -> bool {
+        let mut connections = self.connections.write();
+        if let Some(conn) = connections.get_mut(id) {
+            conn.connection_type = connection_type;
+            conn.last_activity = Utc::now();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update connection remote_id
+    pub fn update_remote_id(&self, id: &ConnectionId, remote_id: impl Into<String>) -> bool {
+        let mut connections = self.connections.write();
+        if let Some(conn) = connections.get_mut(id) {
+            conn.remote_id = Some(remote_id.into());
+            conn.last_activity = Utc::now();
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -292,5 +377,142 @@ mod tests {
         let result = validate_token(Some("wrong-token".to_string()), "valid-token");
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().0, StatusCode::UNAUTHORIZED);
+    }
+
+    // === Tests for Bidirectional Relay Logic (US-006) ===
+
+    #[test]
+    fn test_connection_with_type() {
+        let conn = Connection::with_type(ConnectionType::Agent);
+        assert_eq!(conn.connection_type, ConnectionType::Agent);
+        assert_eq!(conn.state, ConnectionState::Connecting);
+    }
+
+    #[test]
+    fn test_connection_set_remote_id() {
+        let mut conn = Connection::new();
+        conn.set_remote_id("my-agent");
+        assert_eq!(conn.remote_id, Some("my-agent".to_string()));
+    }
+
+    #[test]
+    fn test_connection_registry_update_connection_type() {
+        let registry = ConnectionRegistry::new();
+        
+        // Register a client connection
+        let mut conn = Connection::new();
+        conn.connect();
+        let id = registry.register(conn);
+        
+        // Initially it's a client
+        let retrieved = registry.get(&id).unwrap();
+        assert_eq!(retrieved.connection_type, ConnectionType::Client);
+        
+        // Update to agent
+        let updated = registry.update_connection_type(&id, ConnectionType::Agent);
+        assert!(updated);
+        
+        // Verify update
+        let retrieved = registry.get(&id).unwrap();
+        assert_eq!(retrieved.connection_type, ConnectionType::Agent);
+    }
+
+    #[test]
+    fn test_connection_registry_update_remote_id() {
+        let registry = ConnectionRegistry::new();
+        
+        let mut conn = Connection::new();
+        conn.connect();
+        let id = registry.register(conn);
+        
+        // Update remote_id
+        let updated = registry.update_remote_id(&id, "test-agent");
+        assert!(updated);
+        
+        // Verify update
+        let retrieved = registry.get(&id).unwrap();
+        assert_eq!(retrieved.remote_id, Some("test-agent".to_string()));
+    }
+
+    #[test]
+    fn test_connection_registry_active_clients() {
+        let registry = ConnectionRegistry::new();
+        
+        // Register a client
+        let mut client = Connection::new();
+        client.connect();
+        registry.register(client);
+        
+        // Register an agent
+        let mut agent = Connection::with_type(ConnectionType::Agent);
+        agent.connect();
+        registry.register(agent);
+        
+        // Register a disconnected connection
+        let disconnected = Connection::new();
+        registry.register(disconnected);
+        
+        let clients = registry.active_clients();
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].connection_type, ConnectionType::Client);
+    }
+
+    #[test]
+    fn test_connection_registry_active_agents() {
+        let registry = ConnectionRegistry::new();
+        
+        // Register a client
+        let mut client = Connection::new();
+        client.connect();
+        registry.register(client);
+        
+        // Register an agent
+        let mut agent = Connection::with_type(ConnectionType::Agent);
+        agent.connect();
+        registry.register(agent);
+        
+        // Register another agent (not connected)
+        let disconnected_agent = Connection::with_type(ConnectionType::Agent);
+        registry.register(disconnected_agent);
+        
+        let agents = registry.active_agents();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].connection_type, ConnectionType::Agent);
+    }
+
+    #[test]
+    fn test_connection_registry_get_by_remote_id() {
+        let registry = ConnectionRegistry::new();
+        
+        // Register an agent with remote_id
+        let mut agent = Connection::with_type(ConnectionType::Agent);
+        agent.connect();
+        agent.set_remote_id("my-agent");
+        let id = registry.register(agent);
+        
+        // Find by remote_id
+        let found = registry.get_by_remote_id("my-agent");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, id);
+    }
+
+    #[test]
+    fn test_connection_registry_get_by_remote_id_not_found() {
+        let registry = ConnectionRegistry::new();
+        
+        let found = registry.get_by_remote_id("nonexistent");
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn test_update_nonexistent_connection_fails() {
+        let registry = ConnectionRegistry::new();
+        
+        let fake_id = Uuid::new_v4();
+        let updated = registry.update_connection_type(&fake_id, ConnectionType::Agent);
+        assert!(!updated);
+        
+        let updated = registry.update_remote_id(&fake_id, "test");
+        assert!(!updated);
     }
 }

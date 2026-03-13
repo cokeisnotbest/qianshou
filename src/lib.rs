@@ -22,7 +22,7 @@ pub use auth::*;
 // Connection management types
 pub mod connection;
 pub use connection::{
-    Connection, ConnectionId, ConnectionRegistry, ConnectionState, RelayState, validate_token,
+    Connection, ConnectionId, ConnectionRegistry, ConnectionState, ConnectionType, RelayState, validate_token,
 };
 
 // JSON-RPC request handler
