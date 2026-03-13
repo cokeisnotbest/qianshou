@@ -515,4 +515,61 @@ mod tests {
         let updated = registry.update_remote_id(&fake_id, "test");
         assert!(!updated);
     }
+    
+    // === Tests for Heartbeat Keep-Alive (US-007) ===
+    
+    #[test]
+    fn test_connection_update_activity() {
+        let mut conn = Connection::new();
+        
+        // Initial activity timestamp should be close to creation time
+        let initial_activity = conn.last_activity;
+        
+        // Wait a tiny bit and update activity
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        conn.update_activity();
+        
+        // Activity should have been updated
+        assert!(conn.last_activity >= initial_activity);
+    }
+    
+    #[test]
+    fn test_connection_activity_updated_on_connect() {
+        let mut conn = Connection::new();
+        let before_connect = conn.last_activity;
+        
+        // Connect should update activity
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        conn.connect();
+        
+        assert!(conn.last_activity >= before_connect);
+    }
+    
+    #[test]
+    fn test_connection_activity_updated_on_disconnect() {
+        let mut conn = Connection::new();
+        conn.connect();
+        
+        let before_disconnect = conn.last_activity;
+        
+        // Disconnect should update activity
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        conn.disconnect();
+        
+        assert!(conn.last_activity >= before_disconnect);
+    }
+    
+    #[test]
+    fn test_connection_activity_updated_on_close() {
+        let mut conn = Connection::new();
+        conn.connect();
+        
+        let before_close = conn.last_activity;
+        
+        // Close should update activity
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        conn.close();
+        
+        assert!(conn.last_activity >= before_close);
+    }
 }

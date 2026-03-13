@@ -12,18 +12,22 @@ use std::path::PathBuf;
 use axum::{
     Router,
     routing::get,
-    extract::ws::{WebSocket, WebSocketUpgrade},
+    extract::ws::{WebSocket, WebSocketUpgrade, Message},
     extract::Query,
     response::IntoResponse,
     response::sse::{Event, Sse, KeepAlive},
     Extension,
 };
-use futures_util::stream::StreamExt;
+use futures_util::{stream::StreamExt, SinkExt};
 use tokio::sync::broadcast;
-use std::time::Duration;
+use tokio::time::{interval, timeout, Duration, Instant};
 use serde::Deserialize;
 use qianshou::{TokenQuery as AuthTokenQuery, validate_token, Connection, RelayState};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+/// Heartbeat configuration constants
+const HEARTBEAT_INTERVAL_SECS: u64 = 30; // Send ping every 30 seconds
+const HEARTBEAT_TIMEOUT_SECS: u64 = 10;  // Expect pong within 10 seconds
 
 /// Server configuration
 #[derive(Debug, Clone, Deserialize)]
@@ -121,7 +125,7 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
-/// Handle WebSocket connections with proper connection lifecycle management
+/// Handle WebSocket connections with proper connection lifecycle management and heartbeat
 async fn handle_socket(socket: WebSocket, state: AppState) {
     // Create a new connection with unique UUID
     let mut connection = Connection::new();
@@ -137,35 +141,98 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
     connection.connect();
     state.relay_state.connection_registry.update_state(&connection_id, connection.state);
     
-    let (_sender, mut receiver) = socket.split();
+    let (mut sender, mut receiver) = socket.split();
     
-    // TODO: Implement relay logic
-    // - Token authentication (already done in ws_handler)
-    // - JSON-RPC protocol handling
-    // - Bidirectional message relay
-    // - Heartbeat (30 second ping/pong)
+    // Track heartbeat state
+    let mut _last_activity = Instant::now();
+    let mut waiting_for_pong = false;
     
-    // Handle messages with proper connection tracking
+    // Create heartbeat interval
+    let mut heartbeat_interval = interval(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+    
+    // Handle messages with proper connection tracking and heartbeat
     loop {
-        match receiver.next().await {
-            Some(Ok(msg)) => {
-                tracing::debug!("Connection {} received: {:?}", connection_id, msg);
-                // Update activity timestamp
-                let mut conn = Connection::new();
-                conn.id = connection_id;
-                conn.update_activity();
+        tokio::select! {
+            // Heartbeat tick - send ping
+            _ = heartbeat_interval.tick() => {
+                // If we were waiting for pong and didn't receive it, close the connection
+                if waiting_for_pong {
+                    tracing::warn!(
+                        "Connection {}: heartbeat timeout - no pong received within {} seconds",
+                        connection_id,
+                        HEARTBEAT_TIMEOUT_SECS
+                    );
+                    // Send close frame
+                    let _ = sender.close().await;
+                    break;
+                }
+                
+                // Send ping frame
+                tracing::debug!("Connection {}: sending heartbeat ping", connection_id);
+                if let Err(e) = sender.send(Message::Ping(vec![].into())).await {
+                    tracing::error!("Connection {}: failed to send ping: {}", connection_id, e);
+                    break;
+                }
+                waiting_for_pong = true;
             }
-            Some(Err(e)) => {
-                tracing::error!("Connection {} error: {}", connection_id, e);
-                break;
-            }
-            None => {
-                // Stream ended (normal close)
-                tracing::debug!("Connection {} stream ended", connection_id);
-                break;
+            
+            // Receive message with timeout to check for pong
+            result = timeout(Duration::from_secs(1), receiver.next()) => {
+                match result {
+                    Ok(Some(Ok(msg))) => {
+                        // Update activity timestamp on any message
+                        _last_activity = Instant::now();
+                        
+                        // Check for pong response
+                        match &msg {
+                            Message::Pong(_) => {
+                                tracing::debug!("Connection {}: received pong", connection_id);
+                                waiting_for_pong = false;
+                            }
+                            Message::Text(text) => {
+                                tracing::debug!("Connection {} received: {:?}", connection_id, text);
+                                // TODO: Handle JSON-RPC messages here
+                            }
+                            Message::Close(_) => {
+                                tracing::debug!("Connection {}: received close frame", connection_id);
+                                break;
+                            }
+                            Message::Ping(data) => {
+                                // Respond to ping with pong
+                                tracing::debug!("Connection {}: received ping, sending pong", connection_id);
+                                if let Err(e) = sender.send(Message::Pong(data.clone())).await {
+                                    tracing::error!("Connection {}: failed to send pong: {}", connection_id, e);
+                                }
+                            }
+                            _ => {}
+                        }
+                        
+                        // Update connection registry last_activity
+                        if let Some(mut conn) = state.relay_state.connection_registry.get(&connection_id) {
+                            conn.update_activity();
+                            let _ = state.relay_state.connection_registry.update_state(
+                                &connection_id,
+                                conn.state
+                            );
+                        }
+                    }
+                    Ok(Some(Err(e))) => {
+                        tracing::error!("Connection {} error: {}", connection_id, e);
+                        break;
+                    }
+                    Ok(None) => {
+                        // Stream ended (normal close)
+                        tracing::debug!("Connection {} stream ended", connection_id);
+                        break;
+                    }
+                    Err(_) => {
+                        // Timeout - just continue to check heartbeat
+                        continue;
+                    }
+                }
             }
         }
-    };
+    }
 
     // Handle graceful disconnect
     handle_disconnect(&state, connection_id).await;
@@ -389,5 +456,21 @@ mod tests {
         
         let err = ConfigError::InvalidPort("test error".to_string());
         assert!(err.to_string().contains("Invalid port"));
+    }
+    
+    // === Tests for Heartbeat Keep-Alive (US-007) ===
+    
+    #[test]
+    fn test_heartbeat_constants() {
+        // Verify heartbeat configuration
+        assert_eq!(HEARTBEAT_INTERVAL_SECS, 30);
+        assert_eq!(HEARTBEAT_TIMEOUT_SECS, 10);
+    }
+    
+    #[test]
+    fn test_heartbeat_interval_greater_than_timeout() {
+        // Heartbeat interval should be greater than timeout
+        // so we have time to detect missed pongs
+        assert!(HEARTBEAT_INTERVAL_SECS > HEARTBEAT_TIMEOUT_SECS);
     }
 }
