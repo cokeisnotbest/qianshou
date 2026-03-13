@@ -18,12 +18,11 @@ use axum::{
     response::sse::{Event, Sse, KeepAlive},
     Extension,
 };
-use hyper::http::StatusCode;
 use futures_util::stream::StreamExt;
 use tokio::sync::broadcast;
 use std::time::Duration;
 use serde::Deserialize;
-use qianshou::TokenQuery;
+use qianshou::{TokenQuery as AuthTokenQuery, validate_token, Connection, RelayState};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Server configuration
@@ -91,17 +90,18 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
-/// Broadcast channel for SSE log streaming
+/// Application state with connection management
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
-    pub log_tx: broadcast::Sender<String>,
+    pub relay_state: RelayState,
 }
 
 impl AppState {
     pub fn new(config: Config) -> Self {
         let (log_tx, _) = broadcast::channel(1000);
-        Self { config, log_tx }
+        let relay_state = RelayState::new(log_tx);
+        Self { config, relay_state }
     }
 }
 
@@ -109,57 +109,88 @@ impl AppState {
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Extension(state): Extension<AppState>,
-    Query(token_query): Query<TokenQuery>,
+    Query(token_query): Query<AuthTokenQuery>,
 ) -> impl IntoResponse {
-    // Validate token from query parameter
-    let token = match token_query.token {
-        Some(t) if !t.is_empty() => t,
-        _ => {
-            tracing::warn!("WebSocket connection rejected: missing token");
-            return (StatusCode::UNAUTHORIZED, "Missing authentication token").into_response();
-        }
-    };
-
-    // Validate token against config
-    if token != state.config.token {
-        tracing::warn!("WebSocket connection rejected: invalid token");
-        return (StatusCode::UNAUTHORIZED, "Invalid authentication token").into_response();
+    // Validate token from query parameter using the new validate_token function
+    if let Err((status, message)) = validate_token(token_query.token.clone(), &state.config.token) {
+        return (status, message).into_response();
     }
 
-    tracing::info!("WebSocket connection accepted");
+    tracing::info!("WebSocket upgrade request with valid token");
     
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
-/// Handle WebSocket connections
-async fn handle_socket(socket: WebSocket, _state: AppState) {
+/// Handle WebSocket connections with proper connection lifecycle management
+async fn handle_socket(socket: WebSocket, state: AppState) {
+    // Create a new connection with unique UUID
+    let mut connection = Connection::new();
+    let connection_id = connection.id;
+    
+    // Register the connection
+    state.relay_state.connection_registry.register(connection.clone());
+    
+    // Log connection open event
+    tracing::info!("Connection opened: {}", connection_id);
+    
+    // Transition to connected state
+    connection.connect();
+    state.relay_state.connection_registry.update_state(&connection_id, connection.state);
+    
     let (_sender, mut receiver) = socket.split();
     
     // TODO: Implement relay logic
-    // - Token authentication
+    // - Token authentication (already done in ws_handler)
     // - JSON-RPC protocol handling
     // - Bidirectional message relay
     // - Heartbeat (30 second ping/pong)
     
-    // Placeholder: just receive messages for now
-    while let Some(result) = receiver.next().await {
-        match result {
-            Ok(msg) => {
-                tracing::debug!("Received: {:?}", msg);
+    // Handle messages with proper connection tracking
+    loop {
+        match receiver.next().await {
+            Some(Ok(msg)) => {
+                tracing::debug!("Connection {} received: {:?}", connection_id, msg);
+                // Update activity timestamp
+                let mut conn = Connection::new();
+                conn.id = connection_id;
+                conn.update_activity();
             }
-            Err(e) => {
-                tracing::error!("WebSocket error: {}", e);
+            Some(Err(e)) => {
+                tracing::error!("Connection {} error: {}", connection_id, e);
+                break;
+            }
+            None => {
+                // Stream ended (normal close)
+                tracing::debug!("Connection {} stream ended", connection_id);
                 break;
             }
         }
-    }
+    };
+
+    // Handle graceful disconnect
+    handle_disconnect(&state, connection_id).await;
+}
+
+/// Handle WebSocket disconnect gracefully
+async fn handle_disconnect(state: &AppState, connection_id: uuid::Uuid) {
+    // Update connection state to closing
+    state.relay_state.connection_registry.update_state(&connection_id, qianshou::ConnectionState::Closing);
+    
+    // Log connection close event
+    tracing::info!("Connection closed: {}", connection_id);
+    
+    // Transition to disconnected state
+    state.relay_state.connection_registry.update_state(&connection_id, qianshou::ConnectionState::Disconnected);
+    
+    // Optionally remove from registry (or keep for history)
+    // state.relay_state.connection_registry.remove(&connection_id);
 }
 
 /// SSE log stream endpoint
 async fn sse_logs(
     Extension(state): Extension<AppState>,
 ) -> impl IntoResponse {
-    let mut rx = state.log_tx.subscribe();
+    let mut rx = state.relay_state.log_tx.subscribe();
     
     let stream = async_stream::stream! {
         loop {

@@ -19,6 +19,12 @@ pub use rpc::*;
 pub mod auth;
 pub use auth::*;
 
+// Connection management types
+pub mod connection;
+pub use connection::{
+    Connection, ConnectionId, ConnectionRegistry, ConnectionState, RelayState, validate_token,
+};
+
 #[cfg(test)]
 mod tests {
     #[test]
