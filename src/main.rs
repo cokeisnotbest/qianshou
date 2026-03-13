@@ -13,14 +13,17 @@ use axum::{
     Router,
     routing::get,
     extract::ws::{WebSocket, WebSocketUpgrade},
+    extract::Query,
     response::IntoResponse,
     response::sse::{Event, Sse, KeepAlive},
     Extension,
 };
+use hyper::http::StatusCode;
 use futures_util::stream::StreamExt;
 use tokio::sync::broadcast;
 use std::time::Duration;
 use serde::Deserialize;
+use qianshou::TokenQuery;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Server configuration
@@ -102,11 +105,29 @@ impl AppState {
     }
 }
 
-/// WebSocket upgrade handler
+/// WebSocket upgrade handler with token authentication
 async fn ws_handler(
     ws: WebSocketUpgrade,
     Extension(state): Extension<AppState>,
+    Query(token_query): Query<TokenQuery>,
 ) -> impl IntoResponse {
+    // Validate token from query parameter
+    let token = match token_query.token {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            tracing::warn!("WebSocket connection rejected: missing token");
+            return (StatusCode::UNAUTHORIZED, "Missing authentication token").into_response();
+        }
+    };
+
+    // Validate token against config
+    if token != state.config.token {
+        tracing::warn!("WebSocket connection rejected: invalid token");
+        return (StatusCode::UNAUTHORIZED, "Invalid authentication token").into_response();
+    }
+
+    tracing::info!("WebSocket connection accepted");
+    
     ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 

@@ -15,6 +15,10 @@ pub use tokio::sync::broadcast;
 pub mod rpc;
 pub use rpc::*;
 
+// Authentication types
+pub mod auth;
+pub use auth::*;
+
 #[cfg(test)]
 mod tests {
     #[test]
