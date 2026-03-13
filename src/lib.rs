@@ -33,6 +33,13 @@ pub use logging::{LogBroadcaster, LogEntry, LogLevel, LogSubscriber, should_incl
 pub mod handler;
 pub use handler::JsonRpcHandler;
 
+// Error handling types
+pub mod error;
+pub use error::{
+    AppError, ConfigError, AuthError, RpcError, ConnectionError, InternalError,
+    config_not_found, invalid_token, connection_not_found, remote_not_found, internal_error,
+};
+
 #[cfg(test)]
 mod tests {
     #[test]
